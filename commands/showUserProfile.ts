@@ -1,28 +1,25 @@
-import { ResponseType } from "@microsoft/microsoft-graph-client";
 import { CardFactory, TurnContext } from "botbuilder";
-import {
-  createMicrosoftGraphClientWithCredential,
-  OnBehalfOfUserCredential,
-} from "@microsoft/teamsfx";
-import { SSOCommand } from "../helpers/botCommand";
-import oboAuthConfig from "../authConfig";
+import { SSOCommand } from "./ssoCommand";
+import ApiGraph from "../api/apiGraph";
 
 export class ShowUserProfile extends SSOCommand {
+  public name: string = ShowUserProfile.name;
+
   constructor() {
     super();
     this.matchPatterns = [/^\s*show\s*/];
     this.operationWithSSOToken = this.showUserInfo;
   }
 
-  async showUserInfo(context: TurnContext, ssoToken: string) {
+
+  async showUserInfo(context: TurnContext, ssoToken: string, userState: any) {
     await context.sendActivity("Retrieving user information from Microsoft Graph ...");
 
-    // Call Microsoft Graph half of user
-    const oboCredential = new OnBehalfOfUserCredential(ssoToken, oboAuthConfig);
-    const graphClient = createMicrosoftGraphClientWithCredential(oboCredential, [
-      "User.Read",
-    ]);
-    const me = await graphClient.api("/me").get();
+    // Create a Graph client
+    const graphApi = new ApiGraph(ssoToken);
+
+    // Get user profile
+    const me = await graphApi.getPersonAsync();
     if (me) {
       await context.sendActivity(
         `You're logged in as ${me.displayName} (${me.userPrincipalName})${
@@ -30,22 +27,13 @@ export class ShowUserProfile extends SSOCommand {
         }.`
       );
 
-      // show user picture
-      let photoBinary: ArrayBuffer;
-      try {
-        photoBinary = await graphClient
-          .api("/me/photo/$value")
-          .responseType(ResponseType.ARRAYBUFFER)
-          .get();
-      } catch {
-        return;
-      }
+      // Get user picture
+      const userPicture = await graphApi.getUserPhotoAsync();
 
-      const buffer = Buffer.from(photoBinary);
-      const imageUri = "data:image/png;base64," + buffer.toString("base64");
+      // show user picture
       const card = CardFactory.thumbnailCard(
         "User Picture",
-        CardFactory.images([imageUri])
+        CardFactory.images([userPicture])
       );
       await context.sendActivity({ attachments: [card] });
     } else {

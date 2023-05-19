@@ -7,19 +7,19 @@ import * as path from "path";
 import {
   CloudAdapter,
   ConfigurationServiceClientCredentialFactory,
-  ConfigurationBotFrameworkAuthentication, TurnContext
+  ConfigurationBotFrameworkAuthentication, TurnContext, TeamsSSOTokenExchangeMiddleware, MemoryStorage, ConversationState, UserState
 } from "botbuilder";
 
 // This bot's main dialog.
 import { TeamsBot } from "./teamsBot";
-import config from "./config";
+import AuthConfig from "./config/authConfig";
 
 // Create adapter.
 // See https://aka.ms/about-bot-adapter to learn more about adapters.
 const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
-  MicrosoftAppId: config.botId,
-  MicrosoftAppPassword: config.botPassword,
-  MicrosoftAppType: "MultiTenant",
+  MicrosoftAppId: AuthConfig.botId,
+  MicrosoftAppPassword: AuthConfig.botPassword,
+  MicrosoftAppType: AuthConfig.botAppType,
 });
 
 const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication(
@@ -49,11 +49,26 @@ const onTurnErrorHandler = async (context: TurnContext, error: Error) => {
   await context.sendActivity("To continue to run this bot, please fix the bot source code.");
 };
 
+// Define the state store for your bot.
+// See https://aka.ms/about-bot-state to learn more about using MemoryStorage.
+// A bot requires a state storage system to persist the dialog and user state between messages.
+const memoryStorage = new MemoryStorage();
+
+// Add TeamsSSOTokenExchangeMiddleware to enable SSO token exchange for OAuth2 Connection Flow
+if(AuthConfig.connectionName) {
+  const tokenExchangeMiddleware = new TeamsSSOTokenExchangeMiddleware(memoryStorage, AuthConfig.connectionName);
+  adapter.use(tokenExchangeMiddleware);
+}
+
 // Set the onTurnError for the singleton CloudAdapter
 adapter.onTurnError = onTurnErrorHandler;
 
+// Create conversation and user state with in-memory storage provider.
+const conversationState = new ConversationState(memoryStorage);
+const userState = new UserState(memoryStorage);
+
 // Create the bot that will handle incoming messages.
-const bot = new TeamsBot();
+const bot = new TeamsBot(conversationState, userState);
 
 // Create HTTP server.
 const server = restify.createServer();

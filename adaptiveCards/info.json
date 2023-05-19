@@ -1,0 +1,40 @@
+{
+  "type": "AdaptiveCard",
+  "body": [
+    {
+      "type": "TextBlock",
+      "size": "Medium",
+      "weight": "Bolder",
+      "text": "Get firmographic information regarding ${userData}"
+    },
+    {
+      "type": "TextBlock",
+      "text": "Here you can dynamically enter the firmographic regading ${userData}. Click on \"Get More Info\" below for more details.",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        {
+          "title": "Company Name",
+          "value": "${userData}"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Execute",
+      "title": "Get me more details",
+      "verb": "get info about ${userData}",
+      "fallback": "Action.Submit"
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "Open ${userData} Website",
+      "url": "https://www.${userData}.com/"
+    }
+  ],
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.4"
+}
