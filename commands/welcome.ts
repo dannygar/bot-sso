@@ -3,8 +3,6 @@ import { Utils } from "../helpers/utils";
 const rawWelcomeCard = require("../adaptiveCards/welcome.json");
 
 export class WelcomeCommand extends BotCommand {
-  public name: string = WelcomeCommand.name;
-  
   constructor() {
     super();
     this.matchPatterns = [/^\s*welcome\s*/];

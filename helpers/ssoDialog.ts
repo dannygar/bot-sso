@@ -4,20 +4,17 @@ import {
   DialogTurnStatus,
   WaterfallDialog,
   ComponentDialog,
-  WaterfallStepContext,
-  DialogTurnResult,
 } from "botbuilder-dialogs";
 import {
   ActivityTypes,
-  BotState,
-  StatePropertyAccessor,
   Storage,
   tokenExchangeOperationName,
   TurnContext,
 } from "botbuilder";
 import { TeamsBotSsoPrompt } from "@microsoft/teamsfx";
 import "isomorphic-fetch";
-import AuthConfig from "../config/authConfig";
+import oboAuthConfig from "../authConfig";
+import config from "../config";
 
 const DIALOG_NAME = "SSODialog";
 const MAIN_WATERFALL_DIALOG = "MainWaterfallDialog";
@@ -27,24 +24,20 @@ export class SSODialog extends ComponentDialog {
   private requiredScopes: string[] = ["User.Read"]; // hard code the scopes for demo purpose only
   private dedupStorage: Storage;
   private dedupStorageKeys: string[];
-  private userState: BotState;
-  private operationWithSSO: ((
-    context: TurnContext,
-    ssoToken: string,
-    userState: BotState
-  ) => Promise<any> | undefined) | undefined;
+  private operationWithSSO: (
+    arg0: any,
+    ssoToken: string
+  ) => Promise<any> | undefined;
 
   // Developer controlls the lifecycle of credential provider, as well as the cache in it.
   // In this sample the provider is shared in all conversations
-  constructor(dedupStorage: Storage, userState: BotState) {
+  constructor(dedupStorage: Storage) {
     super(DIALOG_NAME);
 
-    this.userState = userState;
-
-    const initialLoginEndpoint =`https://${AuthConfig.botDomain}/auth-start.html` ;
+    const initialLoginEndpoint =`https://${config.botDomain}/auth-start.html` ;
 
     const dialog = new TeamsBotSsoPrompt(
-      AuthConfig.oboAuthConfig,
+      oboAuthConfig,
       initialLoginEndpoint,
       TEAMS_SSO_PROMPT_ID,
       {
@@ -68,7 +61,7 @@ export class SSODialog extends ComponentDialog {
   }
 
   setSSOOperation(
-    handler: (arg0: TurnContext, arg1: string, arg2: any) => Promise<void> | undefined
+    handler: (arg0: any, arg1: string) => Promise<any> | undefined
   ) {
     this.operationWithSSO = handler;
   }
@@ -82,7 +75,7 @@ export class SSODialog extends ComponentDialog {
    * If no dialog is active, it will start the default dialog.
    * @param {*} dialogContext
    */
-  async run(context: TurnContext, dialogState: StatePropertyAccessor): Promise<void> {
+  async run(context: TurnContext, dialogState: any) {
     const dialogSet = new DialogSet(dialogState);
     dialogSet.add(this);
 
@@ -93,11 +86,11 @@ export class SSODialog extends ComponentDialog {
     }
   }
 
-  async ssoStep(stepContext: WaterfallStepContext): Promise<DialogTurnResult<any>> {
+  async ssoStep(stepContext: any) {
     return await stepContext.beginDialog(TEAMS_SSO_PROMPT_ID);
   }
 
-  async dedupStep(stepContext: WaterfallStepContext): Promise<DialogTurnResult<any>> {
+  async dedupStep(stepContext: any) {
     const tokenResponse = stepContext.result;
     // Only dedup after ssoStep to make sure that all Teams client would receive the login request
     if (tokenResponse && (await this.shouldDedup(stepContext.context))) {
@@ -106,16 +99,16 @@ export class SSODialog extends ComponentDialog {
     return await stepContext.next(tokenResponse);
   }
 
-  async executeOperationWithSSO(stepContext: WaterfallStepContext): Promise<DialogTurnResult<any>> {
+  async executeOperationWithSSO(stepContext: any) {
     const tokenResponse = stepContext.result;
     if (!tokenResponse || !tokenResponse.ssoToken) {
       await stepContext.context.sendActivity(
-        "There is an issue while trying to sign you in, please type \"sign\" command to login and consent permissions again."
+        "There is an issue while trying to sign you in and retrieve your profile photo, please type \"show\" command to login and consent permissions again."
       );
     } else {
       // Once got ssoToken, run operation that depends on ssoToken
       if (this.operationWithSSO) {
-        await this.operationWithSSO(stepContext.context, tokenResponse.ssoToken, this.userState);
+        await this.operationWithSSO(stepContext.context, tokenResponse.ssoToken);
       }
     }
     return await stepContext.endDialog();

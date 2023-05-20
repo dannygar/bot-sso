@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "strict": true,
     "declaration": true,
     "target": "es2017",
     "module": "commonjs",
@@ -11,6 +10,5 @@
     "tsBuildInfoFile": "./lib/.tsbuildinfo",
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
   }
 }

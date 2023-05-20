@@ -8,70 +8,38 @@ import {
   MemoryStorage,
   ConversationState,
   UserState,
-  StatePropertyAccessor,
 } from "botbuilder";
 import { Utils } from "./helpers/utils";
 import { SSODialog } from "./helpers/ssoDialog";
-import { SkillsHelper } from "./helpers/skillsHelper";
-import { commands } from "./commands";
-import { SSOCommand } from "./commands/ssoCommand";
-import { SSOSignIn } from "./commands/ssoSignIn";
+import { CommandsHelper } from "./helpers/commandHelper";
 const rawWelcomeCard = require("./adaptiveCards/welcome.json");
-const rawInfoCard = require("./adaptiveCards/info.json");
-
-const CONVERSATION_DATA_PROPERTY = 'conversationData';
-const USER_PROFILE_PROPERTY = 'userProfile';
+const rawLearnCard = require("./adaptiveCards/learn.json");
 
 export class TeamsBot extends TeamsActivityHandler {
-  private conversationState: BotState;
-  private userState: BotState;
-  private conversationDataAccessor: StatePropertyAccessor<any>;
-  private userProfileAccessor: StatePropertyAccessor<any>;
-  private dialog: SSODialog;
-  private dialogState: any;
-  private dataObject: any = {};
+  likeCountObj: { likeCount: number };
+  conversationState: BotState;
+  userState: BotState;
+  dialog: SSODialog;
+  dialogState: any;
+  commandsHelper: CommandsHelper;
 
-  constructor(conversationState: ConversationState, userState: UserState) {
+  constructor() {
     super();
 
-    if (!conversationState) {
-      throw new Error('[TeamsBot]: Missing parameter. conversationState is required');
-    }
-    if (!userState) {
-        throw new Error('[TeamsBot]: Missing parameter. userState is required');
-    }
+    // record the likeCount
+    this.likeCountObj = { likeCount: 0 };
 
-    this.conversationState = conversationState;
-    this.userState = userState;
+    // Define the state store for your bot.
+    // See https://aka.ms/about-bot-state to learn more about using MemoryStorage.
+    // A bot requires a state storage system to persist the dialog and user state between messages.
+    const memoryStorage = new MemoryStorage();
 
     // Create conversation and user state with in-memory storage provider.
-    this.dialog = new SSODialog(new MemoryStorage(), this.userState);
+    this.conversationState = new ConversationState(memoryStorage);
+    this.userState = new UserState(memoryStorage);
+    this.dialog = new SSODialog(new MemoryStorage());
     this.dialogState = this.conversationState.createProperty("DialogState");
 
-    // Create the state property accessors for the conversation data and user profile.
-    this.conversationDataAccessor = conversationState.createProperty(CONVERSATION_DATA_PROPERTY);
-    this.userProfileAccessor = userState.createProperty(USER_PROFILE_PROPERTY);
-
-
-    // Greet the user once the chat is created
-    this.onConversationUpdate(async (context: TurnContext) => {
-      if (context.activity.membersAdded) {
-          for (const member of context.activity.membersAdded) {
-              if (member.id !== context.activity.recipient.id) {
-                // Trigger SSO sign-in
-                commands.find((c) => c.name === SSOCommand.name)?.run(
-                  {
-                    context: context,
-                    ssoDialog: this.dialog,
-                    dialogState: this.dialogState,
-                  }
-                );
-              }
-          }
-      }
-    });        
-
-    // Reply to user messages
     this.onMessage(async (context, next) => {
       console.log("Running with Message Activity.");
 
@@ -85,52 +53,20 @@ export class TeamsBot extends TeamsActivityHandler {
         txt = removedMentionText.toLowerCase().replace(/\n|\r/g, "").trim();
       }
 
-      // Get the state properties from the turn context.
-      const userProfile = await this.userProfileAccessor.get(context, {});
-      // If the 'DidBotWelcomedUser' does not exist (first time ever for a user), set the default to false.
-      const conversationData = await this.conversationDataAccessor.get(context, {didUserSignedIn: false});
-
-      // Check if the user wants to sign in
-      if (!conversationData.didUserSignedIn) {
-        // Trigger SSO sign-in
-        const ssoCommand = commands.find((c) => c.name === SSOSignIn.name);
-        if (ssoCommand) {
-          ssoCommand.run(
-            {
-              context: context,
-              ssoDialog: this.dialog,
-              dialogState: this.dialogState,
-              userData: userProfile,
-            }
-          );
-          await this.conversationDataAccessor.set(context, {didUserSignedIn: true});
-        }
-      } 
-
       // Trigger command by IM text
-      const isCommandExecuted = await SkillsHelper.triggerSkillDialog(txt, {
+      await CommandsHelper.triggerCommand(txt, {
         context: context,
         ssoDialog: this.dialog,
         dialogState: this.dialogState,
+        likeCount: this.likeCountObj,
       });
-
-      // If no command is executed, show the welcome adaptive card
-      if (!isCommandExecuted) {
-        const card = Utils.renderAdaptiveCard(rawWelcomeCard);
-        await context.sendActivity({ attachments: [card] });
-      }
 
       // By calling next() you ensure that the next BotHandler is run.
       await next();
     });
 
-    // Sends welcome messages to conversation members when they join the conversation.
-    // Messages are only sent to conversation members who aren't the bot.
     this.onMembersAdded(async (context, next) => {
       const membersAdded = context.activity.membersAdded;
-      if (membersAdded === undefined) {
-        return await next();
-      }
       for (let cnt = 0; cnt < membersAdded.length; cnt++) {
         if (membersAdded[cnt].id) {
           const card = Utils.renderAdaptiveCard(rawWelcomeCard);
@@ -148,16 +84,17 @@ export class TeamsBot extends TeamsActivityHandler {
     context: TurnContext,
     invokeValue: AdaptiveCardInvokeValue
   ): Promise<AdaptiveCardInvokeResponse> {
-    // The verb "get info about" is sent from the Adaptive Card defined in adaptiveCards/info.json
-    if (invokeValue.action.verb === "info") {
-      const card = Utils.renderAdaptiveCard(rawInfoCard, this.dataObject);
+    // The verb "userlike" is sent from the Adaptive Card defined in adaptiveCards/learn.json
+    if (invokeValue.action.verb === "userlike") {
+      this.likeCountObj.likeCount++;
+      const card = Utils.renderAdaptiveCard(rawLearnCard, this.likeCountObj);
       await context.updateActivity({
         type: "message",
         id: context.activity.replyToId,
         attachments: [card],
       });
+      return { statusCode: 200, type: undefined, value: undefined };
     }
-    return { statusCode: 200, type: '', value: {}, };
   }
 
   async run(context: TurnContext) {
